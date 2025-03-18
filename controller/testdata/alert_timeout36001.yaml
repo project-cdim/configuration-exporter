@@ -1,0 +1,13 @@
+collect_configs:
+  target_url: 'http://XXX.XXX.XXX.XXX:8080/cdim/api/v1/devices'
+  timeout: 300
+alert_config:
+  target_url: 'http://XXX.XXX.XXX.XXX:8080/cdim/api/v1/monitoring'
+  timeout: 36001
+  state_settings:
+    normal_state:
+      - 'Enabled'
+      - 'Qualified'
+    normal_health:
+      - 'OK'
+      - 'Warning'

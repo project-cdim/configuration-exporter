@@ -1,0 +1,13 @@
+collect_configs:
+  target_url: 'http://localhost:3500/v1.0/invoke/hw-control/method/cdim/api/v1/devices'
+  timeout: 600
+alert_config:
+  target_url: 'http://localhost:3500/v1.0/invoke/alert-manager/method/api/v2/alerts'
+  timeout: 600
+  state_settings:
+    normal_state:
+      - 'Enabled'
+      - 'Qualified'
+    normal_health:
+      - 'OK'
+      - 'Warning'

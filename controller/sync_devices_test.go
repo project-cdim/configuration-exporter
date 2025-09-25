@@ -1,17 +1,17 @@
 // Copyright (C) 2025 NEC Corporation.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License"); you may
 // not use this file except in compliance with the License. You may obtain
 // a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations
 // under the License.
-        
+
 package controller
 
 import (
@@ -24,18 +24,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestGetDevices(t *testing.T) {
+func TestSyncDevices(t *testing.T) {
 	w := httptest.NewRecorder()
 	// Create gin context
 	ginContext, _ := gin.CreateTestContext(w)
-	// Since GetDevices does not use request parameters, a dummy is used
+	// Since SyncDevices does not use request parameters, a dummy is used
 	req := httptest.NewRequest("GET", "/dummy", nil)
 	// Put request information into the context
 	ginContext.Request = req
 
-	GetDevices(ginContext)
+	SyncDevices(ginContext)
 
-	// Since GetDevices will cause an error in loadConfig, the test is passed with 500 instead of 200.
+	// Since SyncDevices will cause an error in loadConfig, the test is passed with 500 instead of 200.
 	if w.Code != 500 {
 		b, _ := io.ReadAll(w.Body)
 		t.Error(w.Code, string(b))
@@ -132,6 +132,69 @@ func Test_loadConfig(t *testing.T) {
 			"Error case: collect_configs/target_url is not in URL format",
 			args{
 				"testdata/collect_url_format_invalid.yaml",
+				settings,
+			},
+			"",
+			true,
+		},
+		{
+			"Error case: forward_configs/timeout is less than the lower limit. Boundary value test",
+			args{
+				"testdata/forward_timeout0.yaml",
+				settings,
+			},
+			"",
+			true,
+		},
+		{
+			"Normal case: forward_configs/timeout is equal to the lower limit. Boundary value test",
+			args{
+				"testdata/forward_timeout1.yaml",
+				settings,
+			},
+			"",
+			false,
+		},
+		{
+			"Normal case: forward_configs/timeout is equal to the upper limit. Boundary value test",
+			args{
+				"testdata/forward_timeout36000.yaml",
+				settings,
+			},
+			"",
+			false,
+		},
+		{
+			"Error case: forward_configs/timeout is greater than the upper limit. Boundary value test",
+			args{
+				"testdata/forward_timeout36001.yaml",
+				settings,
+			},
+			"",
+			true,
+		},
+		{
+			"Normal case: Default value is used when forward_configs/timeout is omitted",
+			args{
+				"testdata/forward_timeout_empty.yaml",
+				settings,
+			},
+			"",
+			false,
+		},
+		{
+			"Error case: forward_configs/target_url is required and cannot be omitted",
+			args{
+				"testdata/forward_url_empty.yaml",
+				settings,
+			},
+			"",
+			true,
+		},
+		{
+			"Error case: forward_configs/target_url is not in URL format",
+			args{
+				"testdata/forward_url_format_invalid.yaml",
 				settings,
 			},
 			"",
@@ -467,6 +530,81 @@ func Test_postAlert(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			postAlert(tt.args.alertName, tt.args.alerts, &tt.args.settings)
+		})
+	}
+}
+
+func Test_forwardData(t *testing.T) {
+	// Create a test server to simulate the external web application
+	testServerCreated := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"message": "success"}`))
+	}))
+	defer testServerCreated.Close()
+
+	testServerError := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"message": "ERROR"}`))
+	}))
+	defer testServerError.Close()
+
+	type args struct {
+		settings yamlForwardConfig
+		data     any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			"Normal case: Forward data successfully",
+			args{
+				settings: yamlForwardConfig{
+					TargetUrl: testServerCreated.URL,
+					TimeOut:   new(int),
+				},
+				data: map[string]string{"key": "value"},
+			},
+			false,
+		},
+		{
+			"Error case: Failed to marshal data",
+			args{
+				settings: yamlForwardConfig{
+					TargetUrl: testServerCreated.URL,
+					TimeOut:   new(int),
+				},
+				data: make(chan int), // Unmarshalable type
+			},
+			true,
+		},
+		{
+			"Error case: Failed to send request",
+			args{
+				settings: yamlForwardConfig{
+					TargetUrl: "http://invalid-url",
+					TimeOut:   new(int),
+				},
+				data: map[string]string{"key": "value"},
+			},
+			true,
+		},
+		{
+			"Error case: Invalid forward target URL",
+			args{
+				settings: yamlForwardConfig{
+					TargetUrl: testServerError.URL,
+					TimeOut:   new(int),
+				},
+				data: map[string]string{"key": "value"},
+			},
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			forwardData(&tt.args.settings, tt.args.data)
 		})
 	}
 }

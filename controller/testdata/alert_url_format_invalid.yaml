@@ -1,6 +1,9 @@
 collect_configs:
   target_url: 'http://XXX.XXX.XXX.XXX:8080/cdim/api/v1/devices'
   timeout: 300
+forward_configs:
+  target_url: 'http://XXX.XXX.XXX.XXX:8080/cdim/api/v1/devices'
+  timeout: 300
 alert_config:
   target_url: 'not a valid URL format'
   timeout: 300

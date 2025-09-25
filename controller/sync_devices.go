@@ -1,17 +1,17 @@
 // Copyright (C) 2025 NEC Corporation.
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License"); you may
 // not use this file except in compliance with the License. You may obtain
 // a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations
 // under the License.
-        
+
 package controller
 
 import (
@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,10 +44,16 @@ const (
 
 type yamlContent struct {
 	CollectConfigs yamlCollectConfig `yaml:"collect_configs"`
+	ForwardConfigs yamlForwardConfig `yaml:"forward_configs"`
 	AlertConfigs   yamlAlertConfig   `yaml:"alert_config"`
 }
 
 type yamlCollectConfig struct {
+	TargetUrl string `yaml:"target_url"`
+	TimeOut   *int   `yaml:"timeout"`
+}
+
+type yamlForwardConfig struct {
 	TargetUrl string `yaml:"target_url"`
 	TimeOut   *int   `yaml:"timeout"`
 }
@@ -65,7 +72,7 @@ type yamlStateSetting struct {
 type Output struct {
 	Devices           []map[string]any `json:"deviceList"`
 	IncompleteDevices []any            `json:"incompleteDeviceList"`
-	TimeStanp         string           `json:"infoTimestamp"`
+	TimeStamp         string           `json:"infoTimestamp"`
 }
 
 type alertContent struct {
@@ -105,9 +112,15 @@ func NewAlertContentList(alertName, severity, description string) alertContentLi
 	}
 }
 
+// SyncDevices handles the synchronization of device information.
 // Execute bulk information retrieval of all HW control resources and
-// edit the obtained data into the format of HW information synchronization input for configuration information management
-func GetDevices(c *gin.Context) {
+// edit the obtained data into the format of HW information synchronization input for configuration-manager.
+// Forward the edited data to configuration-manager.
+//
+// Response Codes:
+//   - 202 Accepted: Returned when the synchronization process is successfully initiated.
+//   - 500 Internal Server Error: Returned when an error occurs during any step of the process.
+func SyncDevices(c *gin.Context) {
 	log.Info(c.Request.URL.Path + "[" + c.Request.Method + "] start.")
 
 	settings := yamlContent{}
@@ -154,8 +167,11 @@ func GetDevices(c *gin.Context) {
 		log.Info(fmt.Sprintf("%s not existed. Not send an alert notification.", abnormalStatusDeviceList))
 	}
 
+	// Forward the edited data to configuration-manager.
+	go forwardData(&settings.ForwardConfigs, resources)
+
 	log.Info(c.Request.URL.Path + "[" + c.Request.Method + "] completed successfully.")
-	c.JSON(http.StatusOK, resources)
+	c.JSON(http.StatusAccepted, nil)
 }
 
 // Load settings from yaml file and store in struct
@@ -176,6 +192,12 @@ func loadConfig(filepath string, settings *yamlContent) error {
 		return err
 	}
 
+	// Check the required and format of URL (forward_configs/target_url)
+	err = validConfigUrl("forward_configs/target_url", settings.ForwardConfigs.TargetUrl)
+	if err != nil {
+		return err
+	}
+
 	// Check the required and format of URL (alert_config/target_url)
 	err = validConfigUrl("alert_config/target_url", settings.AlertConfigs.TargetUrl)
 	if err != nil {
@@ -184,6 +206,12 @@ func loadConfig(filepath string, settings *yamlContent) error {
 
 	// Check the range of Timeout (collect_configs/timeout)
 	settings.CollectConfigs.TimeOut, err = validConfigTime("collect_configs/timeout", settings.CollectConfigs.TimeOut)
+	if err != nil {
+		return err
+	}
+
+	// Check the range of Timeout (forward_configs/timeout)
+	settings.ForwardConfigs.TimeOut, err = validConfigTime("forward_configs/timeout", settings.ForwardConfigs.TimeOut)
 	if err != nil {
 		return err
 	}
@@ -345,6 +373,36 @@ func postAlert(alertName string, alerts []any, settings *yamlContent) {
 
 	log.Info("post has been completed.")
 	log.Info(string(alertJsonBody))
+
+	return
+}
+
+// forwardData sends the provided data to a specified target URL using an HTTP POST request.
+// This function is called asynchronously, so it does not return an error.
+//
+// Parameters:
+//   - settings: A pointer to a yamlForwardConfig struct.
+//   - data: The resource data to be sent, which can be of any type.
+func forwardData(settings *yamlForwardConfig, data any) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+
+	httpClient := http.Client{Timeout: time.Duration(*settings.TimeOut) * time.Second}
+	res, err := httpClient.Post(settings.TargetUrl, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		statusCode := strconv.Itoa(res.StatusCode)
+		log.Error("status code = " + statusCode)
+		return
+	}
 
 	return
 }

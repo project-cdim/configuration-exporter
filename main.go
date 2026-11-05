@@ -1,4 +1,4 @@
-// Copyright (C) 2025 NEC Corporation.
+// Copyright (C) 2025-2026 NEC Corporation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may
 // not use this file except in compliance with the License. You may obtain
@@ -15,10 +15,14 @@
 package main
 
 import (
+	"fmt"
+	"path/filepath"
+	"runtime"
+
 	"github.com/project-cdim/configuration-exporter/controller"
+	"github.com/project-cdim/configuration-exporter/server"
 
 	logger "github.com/project-cdim/cdim-go-logger"
-	logger_common "github.com/project-cdim/cdim-go-logger/common"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -28,11 +32,31 @@ import (
 const URL_BASE_V1 = "/cdim/api/v1"
 
 // Audit Trail Logger
-var log, _ = logger.New(logger_common.Option{Tag: logger_common.TAG_TRAIL})
+var log = mustNewTrailLogger()
+
+// mustNewTrailLogger creates the trail logger from a YAML configuration file.
+func mustNewTrailLogger() logger.LoggerInterface {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("failed to resolve main source path")
+	}
+
+	configPath := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "configs", "logger_settings_trail.yaml"))
+	trailLogger, err := logger.NewFromConfig(configPath)
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize trail logger from %s: %v", configPath, err))
+	}
+
+	return trailLogger
+}
 
 func main() {
 	// Create an instance of gin Engine
 	router := gin.Default()
+
+	// Register tracing middleware early
+	router.Use(server.TracingMiddleware())
+
 	// Add custom middleware to gin Engine for logging
 	router.Use(logMiddleware())
 
@@ -61,8 +85,8 @@ func main() {
 //   - After API execution  : logging the end of API
 func logMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		log.TrailReq(ctx.Request.Method, ctx.Request.URL.Path, "-", "request start.")
+		log.TrailReqWithContext(ctx.Request.Context(), ctx.Request.Method, ctx.Request.URL.Path, "-", "request start.")
 		ctx.Next()
-		log.TrailRes(ctx.Writer.Status(), "response end.")
+		log.TrailResWithContext(ctx.Request.Context(), ctx.Writer.Status(), "response end.")
 	}
 }

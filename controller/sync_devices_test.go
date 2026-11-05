@@ -1,4 +1,4 @@
-// Copyright (C) 2025 NEC Corporation.
+// Copyright (C) 2025-2026 NEC Corporation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may
 // not use this file except in compliance with the License. You may obtain
@@ -15,6 +15,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -311,7 +312,7 @@ func Test_loadConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := loadConfig(tt.args.filepath, &tt.args.settings)
+			err := loadConfig(context.Background(), tt.args.filepath, &tt.args.settings)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -453,7 +454,7 @@ func Test_isResourceStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isResourceStatus(tt.args.resource, tt.args.stateSetting); got != tt.want {
+			if got := isResourceStatus(context.Background(), tt.args.resource, tt.args.stateSetting); got != tt.want {
 				t.Errorf("isResourceStatus() = %v, want %v", got, tt.want)
 			}
 		})
@@ -529,7 +530,7 @@ func Test_postAlert(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			postAlert(tt.args.alertName, tt.args.alerts, &tt.args.settings)
+			postAlert(context.Background(), tt.args.alertName, tt.args.alerts, &tt.args.settings)
 		})
 	}
 }
@@ -604,7 +605,7 @@ func Test_forwardData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			forwardData(&tt.args.settings, tt.args.data)
+			forwardData(context.Background(), &tt.args.settings, tt.args.data)
 		})
 	}
 }

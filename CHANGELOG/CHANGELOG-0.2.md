@@ -1,8 +1,8 @@
 # Changelog 0.2
 
-## [0.2.1](https://github.com/project-cdim/configuration-exporter/compare/v0.2.0...v0.2.1) - 2026-10-09
+## [0.2.1](https://github.com/project-cdim/configuration-exporter/compare/v0.1.1...v0.2.1) - 2026-10-09
 
-The changes from v0.2.0 are as follows:
+The changes from v0.1.1 are as follows:
 
 ### Features
 
